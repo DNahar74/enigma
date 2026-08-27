@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,47 @@ var asciiArt = `
 ╚══════╝╚═╝  ╚═══╝╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝
 `
 
+// Theme Colors
+var (
+	colorNeonPink = lipgloss.Color("#FF00FF")
+	colorCyan     = lipgloss.Color("#00FFFF")
+	colorPurple   = lipgloss.Color("#8A2BE2")
+	colorDark     = lipgloss.Color("#1E1E1E")
+	colorGray     = lipgloss.Color("#444444")
+	colorText     = lipgloss.Color("#E0E0E0")
+)
+
+// Styles
+var (
+	indieStyle = lipgloss.NewStyle().Foreground(colorNeonPink).Bold(true)
+
+	activeTabStyle = lipgloss.NewStyle().
+			Border(lipgloss.Border{Top: "─", Bottom: " ", Left: "│", Right: "│", TopLeft: "╭", TopRight: "╮", BottomLeft: "┘", BottomRight: "└"}, true).
+			Foreground(colorCyan).
+			Bold(true).
+			Padding(0, 1)
+
+	inactiveTabStyle = lipgloss.NewStyle().
+				Border(lipgloss.Border{Top: "─", Bottom: "─", Left: "│", Right: "│", TopLeft: "╭", TopRight: "╮", BottomLeft: "┴", BottomRight: "┴"}, true).
+				Foreground(colorGray).
+				Padding(0, 1)
+
+	windowStyle = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(colorGray).
+			BorderTop(false)
+
+	searchBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPurple).
+			Padding(1, 2)
+
+	statusBarText  = lipgloss.NewStyle().Foreground(colorDark).Background(colorPurple).Padding(0, 1)
+	statusBarStyle = lipgloss.NewStyle().Foreground(colorGray).Padding(0, 1)
+
+	readerHeaderStyle = lipgloss.NewStyle().Background(colorCyan).Foreground(colorDark).Padding(0, 1).Bold(true)
+)
+
 type sessionState int
 
 const (
@@ -33,25 +75,6 @@ const (
 	stateSearching
 	stateResults
 	stateDetail
-)
-
-var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF"))
-	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Bold(true)
-	indieStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-
-	activeTabBorder = lipgloss.Border{
-		Top: "─", Bottom: " ", Left: "│", Right: "│",
-		TopLeft: "╭", TopRight: "╮", BottomLeft: "┘", BottomRight: "└",
-	}
-	inactiveTabBorder = lipgloss.Border{
-		Top: "─", Bottom: "─", Left: "│", Right: "│",
-		TopLeft: "╭", TopRight: "╮", BottomLeft: "┴", BottomRight: "┴",
-	}
-
-	activeTabStyle   = lipgloss.NewStyle().Border(activeTabBorder, true).Foreground(lipgloss.Color("212")).Padding(0, 1)
-	inactiveTabStyle = lipgloss.NewStyle().Border(inactiveTabBorder, true).Foreground(lipgloss.Color("240")).Padding(0, 1)
-	windowStyle      = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderTop(false)
 )
 
 type searchResultMsg struct {
@@ -73,6 +96,15 @@ const (
 	TabTypeReader
 )
 
+// list item implementation
+type item struct {
+	res plugin.ScoredResult
+}
+
+func (i item) Title() string       { return i.res.Result.Title }
+func (i item) Description() string { return i.res.Result.URL }
+func (i item) FilterValue() string { return i.res.Result.Title + " " + i.res.Result.URL }
+
 type Tab struct {
 	Type  TabType
 	Title string
@@ -82,10 +114,10 @@ type Tab struct {
 	textInput   textinput.Model
 	queryStr    string
 	parsedQuery query.Query
-	results     []plugin.ScoredResult
+	list        list.Model
 	err         error
-	cursor      int
 	detailView  viewport.Model
+	detailRes   plugin.ScoredResult
 
 	// Reader
 	url        string
@@ -103,16 +135,29 @@ type Model struct {
 
 func newSearchTab() *Tab {
 	ti := textinput.New()
-	ti.Placeholder = "Enter your search query..."
+	ti.Placeholder = "Enter a query to begin..."
+	ti.Prompt = "🔍 "
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(colorCyan)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorNeonPink)
 	ti.Focus()
 	ti.CharLimit = 156
 	ti.Width = 50
+
+	del := list.NewDefaultDelegate()
+	del.Styles.SelectedTitle = del.Styles.SelectedTitle.Foreground(colorNeonPink).BorderForeground(colorNeonPink)
+	del.Styles.SelectedDesc = del.Styles.SelectedDesc.Foreground(colorPurple).BorderForeground(colorNeonPink)
+
+	l := list.New([]list.Item{}, del, 0, 0)
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(true)
+	l.DisableQuitKeybindings()
 
 	return &Tab{
 		Type:        TabTypeSearch,
 		Title:       "Search",
 		searchState: stateHome,
 		textInput:   ti,
+		list:        l,
 	}
 }
 
@@ -143,28 +188,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
-			tab := m.tabs[m.activeTab]
-			if tab.Type == TabTypeSearch && tab.searchState == stateDetail {
-				tab.searchState = stateResults
-				return m, nil
-			}
+		case tea.KeyCtrlC:
 			return m, tea.Quit
 		}
 
+		// Handle global tab navigation
 		switch msg.String() {
-		case "tab", "right":
+		case "tab":
 			if len(m.tabs) > 1 {
 				m.activeTab = (m.activeTab + 1) % len(m.tabs)
 			}
 			return m, nil
-		case "shift+tab", "left":
+		case "shift+tab":
 			if len(m.tabs) > 1 {
 				m.activeTab = (m.activeTab - 1 + len(m.tabs)) % len(m.tabs)
 			}
 			return m, nil
-		case "ctrl+w", "x":
-			// Close current tab, unless it's the only one
+		case "ctrl+w":
 			if len(m.tabs) > 1 {
 				m.tabs = append(m.tabs[:m.activeTab], m.tabs[m.activeTab+1:]...)
 				if m.activeTab >= len(m.tabs) {
@@ -180,10 +220,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, t := range m.tabs {
 			if t.Type == TabTypeReader {
 				t.readerView.Width = m.width - 4
-				t.readerView.Height = m.height - 6
+				t.readerView.Height = m.height - 9 // adjust for tab, borders, and status bar
 			} else if t.Type == TabTypeSearch {
+				t.list.SetSize(m.width-4, m.height-7)
 				t.detailView.Width = m.width - 4
-				t.detailView.Height = m.height - 6
+				t.detailView.Height = m.height - 9
 			}
 		}
 
@@ -194,8 +235,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				tab.err = msg.err
 				tab.searchState = stateHome
 			} else {
-				tab.results = msg.results
-				tab.cursor = 0
+				var items []list.Item
+				for _, r := range msg.results {
+					items = append(items, item{res: r})
+				}
+				tab.list.SetItems(items)
 				tab.searchState = stateResults
 			}
 		}
@@ -215,6 +259,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Route message to active tab
 	tab := m.tabs[m.activeTab]
 	var cmd tea.Cmd
 
@@ -236,48 +281,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						tab.searchState = stateSearching
 						cmds = append(cmds, m.performSearch(m.activeTab, qStr))
 					}
+				} else if msg.Type == tea.KeyEsc {
+					return m, tea.Quit
 				}
 			}
 			tab.textInput, cmd = tab.textInput.Update(msg)
 			cmds = append(cmds, cmd)
 
 		case stateResults:
+			isFiltering := tab.list.FilterState() == list.Filtering
+
 			switch msg := msg.(type) {
 			case tea.KeyMsg:
-				switch msg.String() {
-				case "up", "k":
-					if tab.cursor > 0 {
-						tab.cursor--
-					}
-				case "down", "j":
-					if tab.cursor < len(tab.results)-1 {
-						tab.cursor++
-					}
-				case "enter":
-					if len(tab.results) > 0 {
-						tab.searchState = stateDetail
-						tab.detailView = viewport.New(m.width-4, m.height-6)
-						tab.detailView.SetContent(m.detailViewContent(tab))
-						tab.detailView.GotoTop()
-					}
-				case "s":
-					tab.searchState = stateHome
-					tab.textInput.SetValue("")
-				case "r":
-					// Open in Web Reader Tab
-					if len(tab.results) > 0 {
-						targetURL := tab.results[tab.cursor].Result.URL
-						if targetURL != "" && strings.HasPrefix(targetURL, "http") {
-							newTab := newReaderTab(targetURL)
-							newTab.readerView = viewport.New(m.width-4, m.height-6)
-							m.tabs = append(m.tabs, newTab)
-							m.activeTab = len(m.tabs) - 1
-							cmds = append(cmds, m.performFetch(m.activeTab, targetURL, m.width-8))
+				if !isFiltering {
+					switch msg.String() {
+					case "esc", "s":
+						tab.searchState = stateHome
+						tab.textInput.SetValue("")
+					case "enter":
+						if selectedItem, ok := tab.list.SelectedItem().(item); ok {
+							tab.searchState = stateDetail
+							tab.detailRes = selectedItem.res
+							tab.detailView = viewport.New(m.width-4, m.height-9)
+							tab.detailView.SetContent(render.Result(tab.detailRes, tab.parsedQuery, tab.list.Index()+1, true))
+							tab.detailView.GotoTop()
+						}
+					case "r":
+						if selectedItem, ok := tab.list.SelectedItem().(item); ok {
+							targetURL := selectedItem.res.Result.URL
+							if targetURL != "" && strings.HasPrefix(targetURL, "http") {
+								newTab := newReaderTab(targetURL)
+								newTab.readerView = viewport.New(m.width-4, m.height-9)
+								m.tabs = append(m.tabs, newTab)
+								m.activeTab = len(m.tabs) - 1
+								cmds = append(cmds, m.performFetch(m.activeTab, targetURL, m.width-8))
+							}
 						}
 					}
 				}
 			}
+			tab.list, cmd = tab.list.Update(msg)
+			cmds = append(cmds, cmd)
+
 		case stateDetail:
+			switch msg := msg.(type) {
+			case tea.KeyMsg:
+				if msg.String() == "esc" {
+					tab.searchState = stateResults
+				}
+			}
 			tab.detailView, cmd = tab.detailView.Update(msg)
 			cmds = append(cmds, cmd)
 		}
@@ -304,14 +356,6 @@ func (m Model) performFetch(tabIndex int, url string, width int) tea.Cmd {
 	}
 }
 
-func (m Model) detailViewContent(tab *Tab) string {
-	if tab.cursor < 0 || tab.cursor >= len(tab.results) {
-		return "Invalid selection."
-	}
-	r := tab.results[tab.cursor]
-	return render.Result(r, tab.parsedQuery, tab.cursor+1, true)
-}
-
 func (m Model) View() string {
 	var renderedTabs []string
 	for i, tab := range m.tabs {
@@ -327,69 +371,84 @@ func (m Model) View() string {
 	}
 	tabRow := lipgloss.JoinHorizontal(lipgloss.Bottom, renderedTabs...)
 
-	// Right align instructions
-	instructions := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Tab/Shift+Tab: switch | Ctrl+W: close tab")
-	headerRow := lipgloss.JoinHorizontal(lipgloss.Bottom, tabRow, "  ", instructions)
+	// Create the header row consisting of the tabs
+	headerRow := lipgloss.JoinHorizontal(lipgloss.Bottom, tabRow)
 
 	var content string
+	var statusLeft string
+	var statusRight string
+
 	tab := m.tabs[m.activeTab]
 
 	if tab.err != nil {
-		content = fmt.Sprintf("Error: %v\nPress Esc to quit.", tab.err)
+		content = fmt.Sprintf("Error: %v\n\nPress Ctrl+W to close this tab.", tab.err)
+		statusLeft = "ERROR"
+		statusRight = "Ctrl+W: close"
 	} else if tab.Type == TabTypeSearch {
 		switch tab.searchState {
 		case stateHome:
-			content = fmt.Sprintf("%s\n\n%s\n\n(Press Enter to search, Esc to quit)",
-				indieStyle.Render(asciiArt),
-				tab.textInput.View(),
-			)
-		case stateSearching:
-			content = fmt.Sprintf("Searching for %q...\n", tab.queryStr)
-		case stateResults:
-			if len(tab.results) == 0 {
-				content = "No results found.\nPress 's' to search again, Esc to quit."
-			} else {
-				var b strings.Builder
-				b.WriteString(titleStyle.Render(fmt.Sprintf("Results for %q (Enter: View Details, 'r': Read Web, 's': New Search)", tab.queryStr)) + "\n\n")
-				start := 0
-				if tab.cursor > 10 {
-					start = tab.cursor - 10
-				}
-				for i := start; i < len(tab.results) && i < start+20; i++ {
-					r := tab.results[i]
-					cursor := " "
-					title := r.Result.Title
-					if tab.cursor == i {
-						cursor = ">"
-						title = selectedStyle.Render(title)
-					}
-					emoji := "🌐"
-					if r.Result.SourcePlugin == "local" {
-						emoji = "📝"
-					}
-					b.WriteString(fmt.Sprintf("%s %d. %s %s\n", cursor, i+1, emoji, title))
-				}
-				content = b.String()
+			// Center the ASCII and Input
+			art := indieStyle.Render(asciiArt)
+			input := searchBoxStyle.Render(tab.textInput.View())
+			centeredBlock := lipgloss.JoinVertical(lipgloss.Center, art, "\n", input)
+
+			// Try to vertically center if space allows
+			padTop := (m.height - 15) / 2
+			if padTop > 0 {
+				centeredBlock = strings.Repeat("\n", padTop) + centeredBlock
 			}
+
+			content = lipgloss.PlaceHorizontal(m.width-4, lipgloss.Center, centeredBlock)
+			statusLeft = "HOME"
+			statusRight = "Enter: search • Esc: quit"
+
+		case stateSearching:
+			content = lipgloss.Place(m.width-4, m.height-7, lipgloss.Center, lipgloss.Center, fmt.Sprintf("Searching for %q...", tab.queryStr))
+			statusLeft = "SEARCHING"
+
+		case stateResults:
+			content = tab.list.View()
+			statusLeft = "RESULTS"
+			if tab.list.FilterState() == list.Filtering {
+				statusRight = "Enter/Esc: finish filter"
+			} else {
+				statusRight = "/: filter • Enter: view • r: read web • s/Esc: new search"
+			}
+
 		case stateDetail:
-			content = fmt.Sprintf("%s\n\n%s",
-				titleStyle.Render("Detail View (Press Esc to return)"),
-				tab.detailView.View(),
-			)
+			header := readerHeaderStyle.Render(fmt.Sprintf(" %s ", tab.detailRes.Result.Title))
+			content = fmt.Sprintf("%s\n\n%s", header, tab.detailView.View())
+			statusLeft = "DETAIL"
+			statusRight = "Esc: back to results • j/k: scroll"
 		}
 	} else if tab.Type == TabTypeReader {
 		if tab.loading {
-			content = fmt.Sprintf("Fetching %s...\n\n(This might take a moment to parse)", tab.url)
+			content = lipgloss.Place(m.width-4, m.height-7, lipgloss.Center, lipgloss.Center, fmt.Sprintf("Fetching %s...\n\n(Downloading assets & formatting)", tab.url))
+			statusLeft = "LOADING"
 		} else {
-			content = tab.readerView.View()
+			header := readerHeaderStyle.Render(fmt.Sprintf(" %s ", tab.url))
+			content = fmt.Sprintf("%s\n\n%s", header, tab.readerView.View())
+			statusLeft = "WEB"
+			statusRight = fmt.Sprintf("j/k: scroll • ↓ %3.0f%%", tab.readerView.ScrollPercent()*100)
 		}
 	}
 
 	contentBox := windowStyle.
 		Width(m.width-2).
-		Height(m.height-3).
-		Padding(1, 2).
+		Height(m.height-4). // Adjust to leave room for tabs and status bar
+		Padding(1, 1).
 		Render(content)
 
-	return lipgloss.JoinVertical(lipgloss.Left, headerRow, contentBox)
+	// Global Status Bar
+	sbLeft := statusBarText.Render(statusLeft)
+	sbRight := statusBarStyle.Render(statusRight)
+	sbMiddleWidth := m.width - lipgloss.Width(sbLeft) - lipgloss.Width(sbRight)
+	if sbMiddleWidth < 0 {
+		sbMiddleWidth = 0
+	}
+	sbMiddle := statusBarStyle.Render(strings.Repeat(" ", sbMiddleWidth))
+
+	globalStatusBar := lipgloss.JoinHorizontal(lipgloss.Top, sbLeft, sbMiddle, sbRight)
+
+	return lipgloss.JoinVertical(lipgloss.Left, headerRow, contentBox, globalStatusBar)
 }
