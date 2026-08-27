@@ -12,9 +12,9 @@ import (
 func TestRenderImage(t *testing.T) {
 	// Create a simple 2x2 PNG image in memory
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
-	img.Set(0, 0, color.RGBA{255, 0, 0, 255}) // Red
-	img.Set(1, 0, color.RGBA{0, 255, 0, 255}) // Green
-	img.Set(0, 1, color.RGBA{0, 0, 255, 255}) // Blue
+	img.Set(0, 0, color.RGBA{255, 0, 0, 255})   // Red
+	img.Set(1, 0, color.RGBA{0, 255, 0, 255})   // Green
+	img.Set(0, 1, color.RGBA{0, 0, 255, 255})   // Blue
 	img.Set(1, 1, color.RGBA{255, 255, 0, 255}) // Yellow
 
 	var buf bytes.Buffer
