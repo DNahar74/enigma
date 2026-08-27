@@ -49,11 +49,12 @@ scaffolded "for later."
   shared by both one-shot and interactive modes (§2.7) — plain ANSI
   string concatenation in `main.go` is retired
 - **Persistent interactive TUI session** (`bubbletea`): `enigma` with no
-  arguments launches an interactive session — type a query, see results
-  rendered via `core/render`, navigate between and within results with
-  the keyboard, search again without relaunching. `enigma search "query"`
-  remains available as a scriptable one-shot command using the same
-  pipeline and renderer.
+  arguments launches an interactive session featuring an indie ASCII art
+  startup screen.
+- **Tabbed Interface & Terminal Web Reader**: The TUI supports multiple
+  tabs (e.g. Search, Details, Web). Users can open search results directly
+  in the terminal. The raw HTML is fetched, cleaned (via `goquery`),
+  converted to Markdown, and rendered via `glamour`.
 - Query pipeline: parse → local search → query expansion → remote search
   (fan-out) → filter (chained) → rank (summed) → sort → render
 - Config file (TOML) for blocklist, ranking weights, trust lists, notes
@@ -63,12 +64,11 @@ scaffolded "for later."
   tests
 
 ### 1.2 Explicitly out of scope for V0.1
-- Web UI (browser-based), gRPC/subprocess plugin transport, sync of any
+- External browser-based Web UI, gRPC/subprocess plugin transport, sync of any
   kind, result provenance display beyond `--explain`, source-diversity
   ranking, a persistent document index (local search re-scans files per
   query; no on-disk index yet — see §2.6), any provider beyond
-  Tavily/Marginalia, workflows/command-suggestion features (WARP has
-  these; Enigma's TUI scope is search-result navigation only).
+  Tavily/Marginalia, workflows/command-suggestion features.
 - If a task seems to require one of these, **stop and flag it** rather than
   building a partial version. A half-built connector is dead code.
 
