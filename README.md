@@ -50,7 +50,11 @@ Instead of keeping your local knowledge isolated, Enigma actively uses your note
 
 ## Key Features
 
-- 🧠 **Active Query Expansion**: Searches your local knowledge base first, extracts high-value terminology, and enriches web search queries automatically.
+- 🧠 **Active Query Expansion**: Searches your local knowledge base first, extracts high-value terminology, and enriches web queries automatically.
+- 🎨 **Cyberpunk Tabbed TUI**: An interactive terminal UI built with Bubble Tea. Manage multiple tabs, search the web, and read full articles with live filtering and status bars.
+- 🖼️ **TrueColor Terminal Graphics**: Web pages aren't just text. Enigma fetches images (including WebP) and renders them inline using TrueColor ANSI half-blocks directly in your terminal.
+- 🛡️ **DOM-Depth Resilience**: Automatically flattens deeply nested structural HTML to bypass Go's strict DOM limits, ensuring you can read heavy React apps in the terminal.
+- 🔒 **Privacy-First Local Search**: Indexes and searches your local Markdown notes alongside the web. Your personal data never leaves your machine.
 - 🎯 **Transparent Multi-Signal Ranking**:
   - **BM25 Relevance**: Per-query Inverse Document Frequency (IDF) scoring across title and snippet.
   - **Personal Vocabulary Overlap**: Boosts web pages that intersect with your personal notes' vocabulary.
