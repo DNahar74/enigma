@@ -343,7 +343,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) performSearch(tabIndex int, qStr string) tea.Cmd {
 	return func() tea.Msg {
-		q, _ := query.Parse(qStr)
+		q, err := query.Parse(qStr)
+		if err != nil {
+			return searchResultMsg{tabIndex: tabIndex, err: err}
+		}
 		results, err := m.pipeline.Execute(context.Background(), q)
 		return searchResultMsg{tabIndex: tabIndex, results: results, err: err}
 	}

@@ -96,16 +96,22 @@ func FetchAndRender(ctx context.Context, targetURL string, width int) (string, e
 		go func(t string, url string) {
 			defer wg.Done()
 
-			imgReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			imgReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			if err != nil {
+				return
+			}
 			imgReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 			imgReq.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
 			imgReq.Header.Set("Referer", targetURL)
 
 			imgResp, err := client.Do(imgReq)
-			if err != nil || imgResp.StatusCode != 200 {
+			if err != nil {
 				return
 			}
 			defer imgResp.Body.Close()
+			if imgResp.StatusCode != 200 {
+				return
+			}
 
 			imgBytes, err := io.ReadAll(imgResp.Body)
 			if err != nil {
