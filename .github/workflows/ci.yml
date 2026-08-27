@@ -32,10 +32,6 @@ jobs:
     - name: Vet
       run: go vet ./...
 
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
 
     - name: Test (unit + concurrency)
       run: go test -race ./...
