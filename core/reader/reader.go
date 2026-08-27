@@ -1,6 +1,7 @@
 package reader
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -38,9 +39,26 @@ func FetchAndRender(ctx context.Context, targetURL string, width int) (string, e
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 	}
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse HTML: %w", err)
+		return "", fmt.Errorf("failed to read body: %w", err)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(bodyBytes))
+	if err != nil {
+		// If the DOM is too deep (exceeds 512 nodes), strip structural tags to flatten it
+		if strings.Contains(err.Error(), "exceeds") {
+			flatHTML := string(bodyBytes)
+			flatHTML = strings.ReplaceAll(flatHTML, "<div>", "")
+			flatHTML = strings.ReplaceAll(flatHTML, "</div>", "")
+			flatHTML = strings.ReplaceAll(flatHTML, "<span>", "")
+			flatHTML = strings.ReplaceAll(flatHTML, "</span>", "")
+			doc, err = goquery.NewDocumentFromReader(strings.NewReader(flatHTML))
+		}
+
+		if err != nil {
+			return "", fmt.Errorf("failed to parse HTML: %w", err)
+		}
 	}
 
 	// Clean up noisy tags
@@ -82,7 +100,7 @@ func FetchAndRender(ctx context.Context, targetURL string, width int) (string, e
 			imgReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 			imgReq.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
 			imgReq.Header.Set("Referer", targetURL)
-			
+
 			imgResp, err := client.Do(imgReq)
 			if err != nil || imgResp.StatusCode != 200 {
 				return
