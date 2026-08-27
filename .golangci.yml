@@ -1,0 +1,56 @@
+# Enigma golangci-lint configuration
+# See CONSTITUTION.md §6.1 — changes here require the same scrutiny as scope changes.
+
+linters:
+  # Disable all linters by default, then enable only what we need.
+  # This prevents new linters added in future golangci-lint versions
+  # from silently breaking our build.
+  disable-all: true
+  enable:
+    # --- Required by constitution §6.1 ---
+    - govet        # Reports suspicious constructs (e.g., Printf format mismatches)
+    - errcheck     # Ensures error return values are checked, not discarded (§3.4)
+    - staticcheck  # Advanced static analysis (nil derefs, unreachable code, etc.)
+    - unused       # Detects unused code (complements deadcode in CI)
+    - ineffassign  # Detects assignments to variables that are never read
+    - gosec        # Security-oriented linting (§5)
+    - bodyclose    # Ensures HTTP response bodies are closed (prevents leaks)
+    - noctx        # Ensures HTTP requests use context (§5.3 explicit timeouts)
+
+linters-settings:
+  errcheck:
+    # Don't ignore any error returns — constitution §3.4 says no swallowed errors.
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    # Enable all analyzers
+    enable-all: true
+
+  gosec:
+    # Include all rules by default
+    includes:
+      - G101  # Look for hard coded credentials
+      - G102  # Bind to all interfaces
+      - G103  # Audit the use of unsafe block
+      - G104  # Audit errors not checked
+      - G106  # Audit the use of ssh.InsecureIgnoreHostKey
+      - G107  # URL provided to HTTP request as taint input (§5.4)
+      - G201  # SQL query construction using format string
+      - G202  # SQL query construction using string concatenation
+      - G301  # Poor file permissions used when creating a directory
+      - G302  # Poor file permissions used with chmod
+      - G303  # Creating tempfile using a predictable path
+      - G304  # File path provided as taint input
+      - G305  # File traversal when extracting zip/tar archive
+      - G401  # Detect the usage of DES, RC4, MD5 or SHA1
+      - G402  # Look for bad TLS connection settings (§5.3 never disable TLS)
+      - G501  # Import blocklist: crypto/md5
+      - G502  # Import blocklist: crypto/des
+      - G503  # Import blocklist: crypto/rc4
+      - G601  # Implicit memory aliasing of items from a range statement
+
+issues:
+  # Report all issues, don't cap at a default limit
+  max-issues-per-linter: 0
+  max-same-issues: 0

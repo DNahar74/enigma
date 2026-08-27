@@ -1,0 +1,33 @@
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Test output
+*.out
+coverage
+coverage.out
+test_out.txt
+
+# Debug artifacts
+*.stackdump
+*.test
+
+# User data & Personal notes
+notes/
+*.pdf
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
